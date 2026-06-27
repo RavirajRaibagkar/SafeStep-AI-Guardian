@@ -316,3 +316,5 @@ MIT License — Y4 Prakasam Police Hackathon 2026
 ---
 
 *Built with ❤️ for the safety of women, children, and senior citizens of Andhra Pradesh*
+#   S a f e S t e p - A I - G u a r d i a n  
+ 
