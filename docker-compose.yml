@@ -1,0 +1,129 @@
+version: '3.9'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: safestep_db
+    environment:
+      POSTGRES_DB: safestep_db
+      POSTGRES_USER: safestep
+      POSTGRES_PASSWORD: safestep123
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U safestep -d safestep_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: safestep_redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: safestep_backend
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql://safestep:safestep123@db:5432/safestep_db
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - backend_uploads:/app/uploads
+      - backend_reports:/app/reports
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "5000:5000"
+    restart: unless-stopped
+    command: >
+      sh -c "python -c 'from app import create_app, db; app = create_app();
+      ctx = app.app_context(); ctx.push(); db.create_all();
+      exec(open(\"run.py\").read())' || python run.py"
+
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: safestep_celery
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql://safestep:safestep123@db:5432/safestep_db
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      - backend
+      - redis
+      - db
+    command: celery -A run.celery worker --loglevel=info
+    restart: unless-stopped
+
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: safestep_celery_beat
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql://safestep:safestep123@db:5432/safestep_db
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      - celery-worker
+    command: celery -A run.celery beat --loglevel=info
+    restart: unless-stopped
+
+  web-guardian:
+    build:
+      context: ./web-guardian
+      dockerfile: Dockerfile
+    container_name: safestep_guardian
+    ports:
+      - "3001:80"
+    restart: unless-stopped
+
+  web-police:
+    build:
+      context: ./web-police
+      dockerfile: Dockerfile
+    container_name: safestep_police
+    ports:
+      - "3002:80"
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    container_name: safestep_nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - backend
+      - web-guardian
+      - web-police
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  backend_uploads:
+  backend_reports:
