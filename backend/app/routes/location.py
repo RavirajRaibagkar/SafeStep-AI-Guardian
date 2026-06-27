@@ -56,8 +56,7 @@ def update_location():
         'lat': lat,
         'lng': lng,
         'battery': battery,
-        'timestamp': timestamp,
-    }, room=f'case_{case_id}')
+    }, to=f'case_{case_id}')
 
     return jsonify({'success': True, 'timestamp': timestamp}), 200
 

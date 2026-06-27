@@ -101,7 +101,7 @@ def trigger_sos():
         'trigger_type': trigger_type,
         'timestamp': datetime.utcnow().isoformat(),
         'tracking_url': tracking_url,
-    }, room='police_room')
+    }, to='police_room')
 
     # F18 + F19: Emergency contact cascade + police alert
     cascade = CascadeService(twilio_svc)

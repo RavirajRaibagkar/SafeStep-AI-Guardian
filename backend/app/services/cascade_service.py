@@ -2,8 +2,6 @@ import logging
 import threading
 import time
 from datetime import datetime
-from app.models.alert import Alert
-from app import db
 
 logger = logging.getLogger(__name__)
 
@@ -14,26 +12,43 @@ class CascadeService:
     def __init__(self, twilio_service):
         self.twilio = twilio_service
 
-    def fire_cascade(self, case, user, contacts: list, lat: float, lng: float,
-                     address: str, tracking_url: str, nearest_station=None):
-        """
-        Fire emergency contact cascade in background thread.
-        Contact 1 → wait 2min → Contact 2 → wait 2min → Contact 3 → Police
-        """
-        thread = threading.Thread(
-            target=self._cascade_worker,
-            args=(case, user, contacts, lat, lng, address, tracking_url, nearest_station),
-            daemon=True
-        )
-        thread.start()
-        logger.info(f"Cascade thread started for case {case.case_id}")
-
-    def _cascade_worker(self, case, user, contacts, lat, lng, address, tracking_url, nearest_station):
-        """Background worker executing the cascade."""
+    def fire_cascade(self, case, user, contacts, lat, lng, address, tracking_url, nearest_station=None):
+        """Fire cascade in a daemon thread — passes app reference for context."""
         from flask import current_app
         app = current_app._get_current_object()
 
+        # Snapshot data we need (avoid SQLAlchemy detached-instance errors in thread)
+        case_id = case.id
+        case_id_str = case.case_id
+        user_name = user.name
+        user_phone = user.phone
+        audio_url = case.audio_url
+
+        station_data = None
+        if nearest_station:
+            station_data = {
+                'id': nearest_station.id,
+                'name': nearest_station.name,
+                'sms_number': nearest_station.sms_number,
+            }
+
+        thread = threading.Thread(
+            target=self._cascade_worker,
+            args=(app, case_id, case_id_str, user_name, user_phone,
+                  contacts, lat, lng, tracking_url, audio_url, station_data),
+            daemon=True,
+        )
+        thread.start()
+        logger.info(f"Cascade thread started for case {case_id_str}")
+
+    def _cascade_worker(self, app, case_id, case_id_str, user_name, user_phone,
+                        contacts, lat, lng, tracking_url, audio_url, station_data):
+        """Background cascade worker — runs with pushed app context."""
         with app.app_context():
+            from app import db
+            from app.models.alert import Alert
+            from app.models.case import Case
+
             try:
                 sorted_contacts = sorted(contacts, key=lambda c: c.get('priority', 99))
 
@@ -42,20 +57,18 @@ class CascadeService:
                     name = contact.get('name', f'Contact {i + 1}')
                     priority = i + 1
 
-                    # Send SMS alert
                     sms_result = self.twilio.send_sos_sms(
                         to=phone,
-                        user_name=user.name,
+                        user_name=user_name,
                         lat=lat,
                         lng=lng,
-                        case_id=case.case_id,
+                        case_id=case_id_str,
                         tracking_url=tracking_url,
                     )
 
-                    # Log alert
                     alert = Alert(
-                        case_id=case.id,
-                        user_id=user.id,
+                        case_id=case_id,
+                        user_id=0,  # resolved later from case
                         contact_phone=phone,
                         contact_name=name,
                         contact_priority=priority,
@@ -63,58 +76,75 @@ class CascadeService:
                         twilio_sid=sms_result.get('sid'),
                     )
                     db.session.add(alert)
-                    db.session.commit()
 
-                    logger.info(f"Alert sent to {name} ({phone}) - Priority {priority}")
+                    try:
+                        db.session.commit()
+                    except Exception:
+                        db.session.rollback()
 
-                    # After contact 3, also alert police
-                    if priority >= 3 and nearest_station:
-                        self._alert_police(case, user, lat, lng, tracking_url, nearest_station)
+                    logger.info(f"Alert sent to {name} ({phone}) — Priority {priority}")
 
-                    # Wait 2 minutes before next contact (unless last contact)
+                    # After contact 3, also notify police
+                    if priority >= 3 and station_data:
+                        self._alert_police(app, case_id, case_id_str, lat, lng,
+                                           tracking_url, audio_url, station_data)
+
+                    # Wait 2 min before next contact (check case is still active)
                     if i < len(sorted_contacts) - 1:
                         time.sleep(120)
+                        try:
+                            with app.app_context():
+                                updated = Case.query.get(case_id)
+                                if not updated or updated.status != 'active':
+                                    logger.info(f"Case {case_id_str} no longer active — cascade stopped")
+                                    return
+                        except Exception:
+                            return
 
-                        # Check if case still active
-                        from app.models.case import Case
-                        updated_case = Case.query.get(case.id)
-                        if not updated_case or updated_case.status != 'active':
-                            logger.info(f"Case {case.case_id} no longer active, stopping cascade")
-                            break
-
-                # Final police alert if not already sent
-                if nearest_station and len(sorted_contacts) < 3:
-                    self._alert_police(case, user, lat, lng, tracking_url, nearest_station)
+                # Ensure police are always alerted
+                if station_data and len(sorted_contacts) < 3:
+                    self._alert_police(app, case_id, case_id_str, lat, lng,
+                                       tracking_url, audio_url, station_data)
 
             except Exception as e:
-                logger.error(f"Cascade worker error for case {case.case_id}: {e}")
+                logger.error(f"Cascade worker error for case {case_id_str}: {e}")
 
-    def _alert_police(self, case, user, lat, lng, tracking_url, station):
-        """F19: Alert nearest police station."""
-        if not station.sms_number:
-            logger.warning(f"Station {station.name} has no SMS number")
+    def _alert_police(self, app, case_id, case_id_str, lat, lng,
+                      tracking_url, audio_url, station_data):
+        """F19: Alert nearest police station via SMS."""
+        sms_number = station_data.get('sms_number', '')
+        if not sms_number:
+            logger.warning(f"Station {station_data.get('name')} has no SMS number")
             return
 
         result = self.twilio.send_police_alert_sms(
-            to=station.sms_number,
-            user_name=user.name,
+            to=sms_number,
+            user_name='SafeStep User',
             lat=lat,
             lng=lng,
-            case_id=case.case_id,
+            case_id=case_id_str,
             tracking_url=tracking_url,
-            audio_url=case.audio_url,
+            audio_url=audio_url,
         )
 
-        alert = Alert(
-            case_id=case.id,
-            user_id=user.id,
-            contact_phone=station.sms_number,
-            contact_name=f"Police: {station.name}",
-            contact_priority=99,
-            alert_type='police',
-            twilio_sid=result.get('sid'),
-        )
-        db.session.add(alert)
-        db.session.commit()
+        try:
+            with app.app_context():
+                from app import db
+                from app.models.alert import Alert
+                from app.models.case import Case
+                case = Case.query.get(case_id)
+                alert = Alert(
+                    case_id=case_id,
+                    user_id=case.user_id if case else 0,
+                    contact_phone=sms_number,
+                    contact_name=f"Police: {station_data.get('name', 'Unknown')}",
+                    contact_priority=99,
+                    alert_type='police',
+                    twilio_sid=result.get('sid'),
+                )
+                db.session.add(alert)
+                db.session.commit()
+        except Exception as e:
+            logger.error(f"Failed to log police alert: {e}")
 
-        logger.info(f"Police alerted: {station.name} - SID: {result.get('sid')}")
+        logger.info(f"Police alerted: {station_data.get('name')} — SID: {result.get('sid')}")
