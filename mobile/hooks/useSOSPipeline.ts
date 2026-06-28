@@ -1,19 +1,7 @@
 import { useRef, useCallback } from 'react';
 import * as Location from 'expo-location';
-let Audio: any = null;
-try {
-  Audio = require('expo-av').Audio;
-} catch (e) {
-  console.warn('expo-av native module missing. Audio recording mocked.');
-  Audio = {
-    requestPermissionsAsync: async () => ({ granted: false }),
-    setAudioModeAsync: async () => {},
-    Recording: {
-      createAsync: async () => ({ recording: { stopAndUnloadAsync: async () => {}, getURI: () => null } }),
-      RecordingOptionsPresets: { HIGH_QUALITY: {} }
-    }
-  };
-}
+import { Audio } from '../services/audioMock';
+import { startBackgroundLocationTracking, stopBackgroundLocationTracking } from '../services/backgroundTasks';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../services/api';
 import { socketService } from '../services/socket';
@@ -70,8 +58,14 @@ export function useSOSPipeline() {
       // Store case ID locally
       await AsyncStorage.setItem('active_case_id', caseId);
 
-      // Step 3: Start live location broadcast via Socket.io (F03)
+      // Step 3a: Start background GPS tracking (survives app close on Android)
+      const bgStarted = await startBackgroundLocationTracking();
+
+      // Step 3b: Foreground interval as fallback / iOS supplement
       socketService.joinCase(caseId);
+      if (!bgStarted) {
+        // Background permission denied — foreground interval only
+      }
       locationIntervalRef.current = setInterval(async () => {
         try {
           const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
@@ -152,11 +146,12 @@ export function useSOSPipeline() {
   const cancelSOS = useCallback(async () => {
     const caseId = activeCaseIdRef.current;
 
-    // Stop location interval
+    // Stop location interval and background tracking
     if (locationIntervalRef.current) {
       clearInterval(locationIntervalRef.current);
       locationIntervalRef.current = null;
     }
+    await stopBackgroundLocationTracking();
 
     // Stop recording
     if (recordingRef.current) {

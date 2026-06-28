@@ -1,23 +1,45 @@
 import io from 'socket.io-client';
 
-const SOCKET_URL = process.env.EXPO_PUBLIC_SOCKET_URL || 'http://10.0.2.2:5000';
+/**
+ * SOCKET_URL resolution order:
+ *  1. EXPO_PUBLIC_SOCKET_URL  — set in .env for production/staging
+ *  2. EXPO_PUBLIC_API_URL     — same host as REST API (strips /api suffix)
+ *  3. 10.0.2.2:5000           — Android emulator → host machine fallback
+ *
+ * On a PHYSICAL device running on the same Wi-Fi as the dev machine,
+ * set EXPO_PUBLIC_API_URL=http://<YOUR_LAN_IP>:5000/api in mobile/.env
+ */
+const rawApiUrl = process.env.EXPO_PUBLIC_API_URL || '';
+const SOCKET_URL =
+  process.env.EXPO_PUBLIC_SOCKET_URL ||
+  (rawApiUrl ? rawApiUrl.replace(/\/api\/?$/, '') : 'http://10.0.2.2:5000');
+
+let _errorCount = 0;
+const MAX_LOGGED_ERRORS = 3; // avoid log spam after repeated failures
 
 class SocketService {
   private socket: any = null;
   private isConnected = false;
 
   connect() {
-    if (this.socket?.connected) return;
+    if (this.socket?.connected) return this.socket;
+
+    _errorCount = 0;
 
     this.socket = io(SOCKET_URL, {
-      transports: ['websocket', 'polling'],
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-      timeout: 10000,
+      // polling first is more reliable on physical devices / corporate Wi-Fi;
+      // upgrade to websocket happens automatically after handshake succeeds
+      transports: ['polling', 'websocket'],
+      reconnectionAttempts: 10,
+      reconnectionDelay: 2000,
+      reconnectionDelayMax: 10000,
+      timeout: 20000,         // 20 s — give physical device time to reach server
+      forceNew: false,
     });
 
     this.socket.on('connect', () => {
       this.isConnected = true;
+      _errorCount = 0;
       console.log('[Socket] Connected:', this.socket.id);
     });
 
@@ -27,7 +49,12 @@ class SocketService {
     });
 
     this.socket.on('connect_error', (err: Error) => {
-      console.warn('[Socket] Connection error:', err.message);
+      _errorCount += 1;
+      if (_errorCount <= MAX_LOGGED_ERRORS) {
+        console.warn(`[Socket] Connection error (${_errorCount}/${MAX_LOGGED_ERRORS}):`, err.message);
+      } else if (_errorCount === MAX_LOGGED_ERRORS + 1) {
+        console.warn('[Socket] Further connection errors suppressed. Check EXPO_PUBLIC_API_URL in mobile/.env');
+      }
     });
 
     return this.socket;
@@ -49,13 +76,11 @@ class SocketService {
   }
 
   /**
-   * F03: Emit live location update every 3 seconds during SOS
+   * F03: Emit live location every 3 seconds during SOS.
+   * Silently drops if not connected (REST fallback handles persistence).
    */
   emitLocation(caseId: string, lat: number, lng: number, battery?: number) {
-    if (!this.socket?.connected) {
-      console.warn('[Socket] Not connected — location update dropped');
-      return;
-    }
+    if (!this.socket?.connected) return; // silent — REST endpoint is the source of truth
     this.socket.emit('location_update', {
       case_id: caseId,
       lat,

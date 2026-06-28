@@ -1,27 +1,74 @@
 {
   "expo": {
-    "name": "mobile",
+    "name": "SafeStep",
     "slug": "mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "safestep",
-    "userInterfaceStyle": "light",
-    "plugins": ["expo-router"],
+    "userInterfaceStyle": "dark",
+    "plugins": [
+      "expo-router",
+      "expo-task-manager",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "SafeStep needs your location to share it with emergency contacts when SOS is active.",
+          "locationAlwaysPermission": "SafeStep needs your location in the background to continue sharing it with emergency contacts even when the app is closed.",
+          "locationWhenInUsePermission": "SafeStep needs your location to find nearby danger zones and police stations.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      [
+        "expo-background-fetch",
+        {
+          "minimumInterval": 900
+        }
+      ]
+    ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "UIBackgroundModes": ["location", "fetch", "processing"],
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "SafeStep shares your location with emergency contacts during an active SOS alert, even in the background.",
+        "NSLocationAlwaysUsageDescription": "SafeStep needs background location access to keep sharing GPS during an active SOS.",
+        "NSLocationWhenInUseUsageDescription": "SafeStep uses your location to find nearby police stations and danger zones.",
+        "NSMicrophoneUsageDescription": "SafeStep listens for distress sounds (screams, cries) to automatically trigger an SOS alert.",
+        "NSMotionUsageDescription": "SafeStep detects shake gestures to trigger an SOS alert."
+      }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#0b0d14",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION",
+        "RECORD_AUDIO",
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE",
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT",
+        "WAKE_LOCK"
+      ],
+      "foregroundService": {
+        "notificationChannelId": "safestep-sos",
+        "notificationChannelName": "SafeStep SOS Active",
+        "notificationColor": "#dc2626"
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
     }
   }
 }
+

@@ -1,18 +1,6 @@
 import { useRef, useEffect, useCallback, useState } from 'react';
-let Audio: any = null;
-try {
-  Audio = require('expo-av').Audio;
-} catch (e) {
-  console.warn('expo-av native module missing. Audio recording mocked.');
-  Audio = {
-    requestPermissionsAsync: async () => ({ granted: false }),
-    setAudioModeAsync: async () => {},
-    Recording: {
-      createAsync: async () => ({ recording: { stopAndUnloadAsync: async () => {}, getStatusAsync: async () => ({ isRecording: false, metering: -160 }) } }),
-      RecordingOptionsPresets: { HIGH_QUALITY: {} }
-    }
-  };
-}
+import { Audio } from '../services/audioMock';
+
 
 const WINDOW_MS = 2000;         // 2-second analysis windows
 const CONFIDENCE_THRESHOLD = 0.85;

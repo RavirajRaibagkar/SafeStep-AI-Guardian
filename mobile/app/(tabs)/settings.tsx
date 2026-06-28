@@ -15,6 +15,11 @@ interface UserSettings {
   fake_call_contact: string;
   lone_walker_enabled: boolean;
   notifications_enabled: boolean;
+  belongings?: {
+    vehicle?: string;
+    blood_group?: string;
+    medical_notes?: string;
+  };
 }
 
 export default function SettingsScreen() {
@@ -26,6 +31,7 @@ export default function SettingsScreen() {
     fake_call_contact: 'Mom',
     lone_walker_enabled: false,
     notifications_enabled: true,
+    belongings: { vehicle: '', blood_group: '', medical_notes: '' },
   });
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [newContact, setNewContact] = useState({ name: '', phone: '' });
@@ -174,6 +180,27 @@ export default function SettingsScreen() {
         <View style={styles.inputGroup}>
           <Text style={styles.inputLabel}>Caller Name Display</Text>
           <TextInput style={styles.input} value={settings.fake_call_contact} onChangeText={t => setSettings(p => ({ ...p, fake_call_contact: t }))} placeholder="Mom" placeholderTextColor="#6b7280" />
+        </View>
+      </View>
+
+      {/* Belongings & Medical Info */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>📋 Personal Info & Belongings</Text>
+        <Text style={styles.sectionSub}>This information is securely shared with your Guardian during an SOS.</Text>
+        
+        <View style={styles.inputGroup}>
+          <Text style={styles.inputLabel}>Vehicle Details (Model/Plate)</Text>
+          <TextInput style={styles.input} value={settings.belongings?.vehicle || ''} onChangeText={t => setSettings(p => ({ ...p, belongings: { ...p.belongings, vehicle: t } }))} placeholder="e.g. White Honda City - AP09 XX 1234" placeholderTextColor="#6b7280" />
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.inputLabel}>Blood Group</Text>
+          <TextInput style={styles.input} value={settings.belongings?.blood_group || ''} onChangeText={t => setSettings(p => ({ ...p, belongings: { ...p.belongings, blood_group: t } }))} placeholder="e.g. O+ (Positive)" placeholderTextColor="#6b7280" />
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.inputLabel}>Medical Conditions / Allergies</Text>
+          <TextInput style={styles.input} value={settings.belongings?.medical_notes || ''} onChangeText={t => setSettings(p => ({ ...p, belongings: { ...p.belongings, medical_notes: t } }))} placeholder="e.g. Asthma, Penicillin allergy" placeholderTextColor="#6b7280" />
         </View>
       </View>
 

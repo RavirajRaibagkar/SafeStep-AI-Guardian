@@ -185,6 +185,9 @@ def get_case_status(case_id):
     user = User.query.get(case.user_id)
     station = PoliceStation.query.get(case.nearest_station_id) if case.nearest_station_id else None
 
+    # Extract belongings/medical from settings if present
+    belongings = user.settings.get('belongings', {}) if user and user.settings else {}
+
     return jsonify({
         'case_id': case.case_id,
         'status': case.status,
@@ -193,6 +196,8 @@ def get_case_status(case_id):
         'gps_trail': case.gps_trail or [],
         'nearest_station': station.to_dict() if station else None,
         'user_name': user.name if user else 'Unknown',
+        'user_phone': user.phone if user else 'Unknown',
+        'user_belongings': belongings,
         'fir_pdf_url': case.fir_pdf_url,
     }), 200
 

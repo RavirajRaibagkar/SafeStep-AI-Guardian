@@ -110,9 +110,11 @@ body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--tex
 .filter-count { background: rgba(255,255,255,0.1); padding: 2px 8px; border-radius: 10px; font-size: 11px; }
 
 /* Hotspot Map */
-.hotspot-layout { display: grid; grid-template-columns: 1fr 320px; gap: 20px; height: calc(100vh - 180px); }
-.hotspot-map-placeholder { background: linear-gradient(135deg,#0b0d14,#1a1a2e);
-  border: 1px solid var(--border); border-radius: var(--radius); position: relative; overflow: hidden; }
+.hotspot-tab { padding: 0 !important; height: calc(100vh - 73px); display: flex; flex-direction: column; }
+.hotspot-layout { display: grid; grid-template-columns: 1fr 320px; gap: 0; height: 100%; overflow: hidden; }
+.hotspot-map-container { position: relative; background: #0b0d14; overflow: hidden; }
+.map-fallback { background: linear-gradient(135deg,#0b0d14,#1a1a2e);
+  width: 100%; height: 100%; border-right: 1px solid var(--border); position: relative; overflow: hidden; }
 .map-grid-bg { position: absolute; inset: 0;
   background-image: linear-gradient(rgba(79,70,229,0.06) 1px, transparent 1px),
     linear-gradient(90deg, rgba(79,70,229,0.06) 1px, transparent 1px);
@@ -129,7 +131,7 @@ body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--tex
   cursor: pointer; transition: opacity 0.2s; animation: ripple 2s infinite; }
 .hotspot-dot:hover { opacity: 1; z-index: 20; }
 @keyframes ripple { 0%,100% { box-shadow: 0 0 0 0 currentColor; } 50% { box-shadow: 0 0 0 8px transparent; } }
-.hotspot-list { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+.hotspot-list { background: var(--surface); border-left: 1px solid var(--border);
   padding: 16px; overflow-y: auto; }
 .hotspot-list h3 { font-size: 14px; font-weight: 600; margin-bottom: 16px; }
 .hotspot-item { display: flex; align-items: flex-start; gap: 12px; padding: 12px 0;
